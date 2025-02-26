@@ -39,20 +39,8 @@ __global__ void gol_kernel(const uint32_t* input, uint32_t* output, int dim) {
 void run_game_of_life(const std::uint64_t* input, std::uint64_t* output, int grid_dimensions) {}
 
 void run_game_of_life(const std::uint32_t* input, std::uint32_t* output, int grid_dimensions) {
-    uint32_t *d_input, *d_output;
-    size_t size = grid_dimensions * grid_dimensions * sizeof(uint32_t);
-
-    cudaMalloc(&d_input, size);
-    cudaMalloc(&d_output, size);
-    cudaMemcpy(d_input, input, size, cudaMemcpyHostToDevice);
-
     dim3 blockSize(16, 16);
     dim3 gridSize((grid_dimensions) / 16, (grid_dimensions) / 16);
 
-    gol_kernel<<<gridSize, blockSize>>>(d_input, d_output, grid_dimensions);
-
-    cudaMemcpy(output, d_output, size, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_input);
-    cudaFree(d_output);
+    gol_kernel<<<gridSize, blockSize>>>(input, output, grid_dimensions);
 }
