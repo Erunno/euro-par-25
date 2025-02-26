@@ -5,11 +5,12 @@ CXXFLAGS = -std=c++17 -Wall
 NVCCFLAGS = -arch=sm_50 -std=c++17 -Xcompiler -Wall -I.
 LDFLAGS = -lcudart
 
-BIN_DIR = bin
+GOL_IMPL ?= /dev/null
+GOL_IMPL_DIR = $(dir $(GOL_IMPL))
+
+BIN_DIR = $(GOL_IMPL_DIR)/bin
 OBJ_DIR = $(BIN_DIR)/obj
 EXECUTABLE = $(BIN_DIR)/game_of_life
-
-GOL_IMPL ?= /dev/null
 
 all: $(EXECUTABLE)
 
