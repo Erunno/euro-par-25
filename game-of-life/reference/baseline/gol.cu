@@ -36,6 +36,8 @@ __global__ void gol_kernel(const uint32_t* input, uint32_t* output, int dim) {
     output[INDEX(x, y, dim)] = new_state;
 }
 
+void run_game_of_life(const std::uint64_t* input, std::uint64_t* output, int grid_dimensions) {}
+
 void run_game_of_life(const std::uint32_t* input, std::uint32_t* output, int grid_dimensions) {
     uint32_t *d_input, *d_output;
     size_t size = grid_dimensions * grid_dimensions * sizeof(uint32_t);
