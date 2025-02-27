@@ -9,7 +9,7 @@
 #define seed 42
 #define warm_up_iterations 3
 #define hot_runs 10
-#define check_sum_parts 16
+#define check_sum_parts 8
 #define ROW_TYPE std::uint64_t
 #define WORD_SIZE (sizeof(ROW_TYPE) * 8)
 
