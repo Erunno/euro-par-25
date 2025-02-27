@@ -18,7 +18,7 @@ class CsvMerger:
 
         final_file = '\n'.join([header] + flattened_merged_csv_lines)
 
-        with open(f"merged_reports.csv", 'w') as file:
+        with open(f"report.csv", 'w') as file:
             file.write(final_file)
 
 if __name__ == "__main__":

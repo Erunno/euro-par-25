@@ -10,11 +10,16 @@ TEST_CASES = [
     "32768 100",
 ]
 
-def USE_BIT_PACKING(cu_file):
+def BIT_PACKING_MODE(cu_file):
     id = ID(cu_file)
     no_bit_packing = ['reference/baseline']
-    should_use_bit_packing = id not in no_bit_packing
-    return 1 if should_use_bit_packing else 0
+    tiled_bit_packing = ['reference/tiled-bitwise-macro']
+
+    if id in no_bit_packing:
+        return 0
+    if id in tiled_bit_packing:
+        return 2
+    return 1
 
 def ID(cu_file):
     SCRIPT_DIR = Path(__file__).parent
@@ -33,7 +38,7 @@ class GolRunner:
     def run(cu_file):
         print(f"Launching jobs for '{cu_file}'")
         for test_case in TEST_CASES:
-            command = f"{BASH_COMMAND} {cu_file} {ID(cu_file)} {USE_BIT_PACKING(cu_file)} {test_case}"            
+            command = f"{BASH_COMMAND} {cu_file} {ID(cu_file)} {BIT_PACKING_MODE(cu_file)} {test_case}"            
 
             print(f" -- {command}\n -- ", end="")
             os.system(command)
