@@ -12,8 +12,9 @@ TEST_CASES = [
 
 def USE_BIT_PACKING(cu_file):
     id = ID(cu_file)
-    no_bit_packing = ['reference/baseline'] 
-    return 0 if id not in no_bit_packing else 1
+    no_bit_packing = ['reference/baseline']
+    should_use_bit_packing = id not in no_bit_packing
+    return 1 if should_use_bit_packing else 0
 
 def ID(cu_file):
     SCRIPT_DIR = Path(__file__).parent

@@ -11,6 +11,7 @@
 #define hot_runs 10
 #define check_sum_parts 16
 #define ROW_TYPE std::uint64_t
+#define WORD_SIZE (sizeof(ROW_TYPE) * 8)
 
 #define LOG std::cerr
 #define RESULT std::cout
@@ -88,9 +89,8 @@ void perform_gol(const std::vector<std::uint32_t>& grid, std::vector<std::uint32
 }
 
 void perform_gol_row_packed(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id) {
-
     std::vector<ROW_TYPE> row_packed_grid = to_bitpacked_rows(grid, dim);
-    std::vector<ROW_TYPE> row_packed_out_grid(dim * dim / sizeof(ROW_TYPE), 0);
+    std::vector<ROW_TYPE> row_packed_out_grid(dim * dim / WORD_SIZE, 0);
 
     ROW_TYPE* d_grid;
     ROW_TYPE* d_new_grid;
@@ -99,17 +99,17 @@ void perform_gol_row_packed(const std::vector<std::uint32_t>& grid, std::vector<
 
     cudaEvent_t start;
     start_cuda_timer(start);
-
+    
     for (int i = 0; i < iterations; ++i) {
         run_game_of_life(d_grid, d_new_grid, dim);
         std::swap(d_grid, d_new_grid);
     }
-
+    
     float milliseconds = stop_cuda_timer(start);
-
+    
     cudaMemcpy(row_packed_out_grid.data(), d_grid, row_packed_out_grid.size() * sizeof(ROW_TYPE), cudaMemcpyDeviceToHost);
     free_gpu_mem(d_grid, d_new_grid);
-
+    
     out_grid = from_bitpacked_rows(row_packed_out_grid, dim);
 
     print_result(id, iterations, dim, milliseconds, out_grid);
@@ -134,18 +134,18 @@ void init_grid(std::vector<std::uint32_t>& grid, int dim) {
 }
 
 std::vector<ROW_TYPE> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, int dim) {
-    std::vector<ROW_TYPE> new_grid(dim * dim / sizeof(ROW_TYPE), 0);
+    std::vector<ROW_TYPE> new_grid(dim * dim / WORD_SIZE, 0);
  
-    for (std::size_t i = 0; i < grid.size(); i += sizeof(ROW_TYPE) * 8) {
+    for (std::size_t i = 0; i < grid.size(); i += WORD_SIZE) {
         ROW_TYPE row = 0;
 
-        for (std::size_t j = 0; j < sizeof(ROW_TYPE) * 8; ++j) {
+        for (std::size_t j = 0; j < WORD_SIZE; ++j) {
             if (grid[i + j]) {
                 row |= 1ULL << j;
             }
         }
 
-        new_grid[i / (sizeof(ROW_TYPE) * 8)] = row;
+        new_grid[i / WORD_SIZE] = row;
     }
  
     return new_grid;
@@ -154,9 +154,9 @@ std::vector<ROW_TYPE> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, 
 std::vector<std::uint32_t> from_bitpacked_rows(const std::vector<ROW_TYPE>& grid, int dim) {
     std::vector<std::uint32_t> new_grid(dim * dim, 0);
 
-    for (std::size_t i = 0; i < grid.size(); ++i) {
-        for (std::size_t j = 0; j < sizeof(ROW_TYPE) * 8; ++j) {
-            new_grid[i * sizeof(ROW_TYPE) * 8 + j] = (grid[i] >> j) & 1;
+    for (std::size_t word_idx = 0; word_idx < grid.size(); ++word_idx) {
+        for (std::size_t bit = 0; bit < WORD_SIZE; ++bit) {
+            new_grid[word_idx * WORD_SIZE + bit] = (grid[word_idx] >> bit) & 1;
         }
     }
 
