@@ -10,19 +10,26 @@
 #define warm_up_iterations 3
 #define hot_runs 10
 #define check_sum_parts 8
-#define ROW_TYPE std::uint64_t
-#define WORD_SIZE (sizeof(ROW_TYPE) * 8)
+#define BITPACKED_T std::uint64_t
+#define WORD_SIZE (sizeof(BITPACKED_T) * 8)
 
 #define LOG std::cerr
 #define RESULT std::cout
 
+#define NO_BIT_PACKING 0
+#define ROW_PACKING 1
+#define TILE_PACKING 2
+
 void perform_gol(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id);
-void perform_gol_row_packed(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id);
+template <int BIT_PACKING_MODE>
+void perform_gol_packed(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id);
 void print_result(std::string id, int iterations, int dim, float milliseconds, const std::vector<std::uint32_t>& out_grid);
-void parse_args(int argc, char* argv[], std::string& id, bool& use_bit_packing, int& dim, int& iterations);
+void parse_args(int argc, char* argv[], std::string& id, int& bit_packing_mode, int& dim, int& iterations);
 void init_grid(std::vector<std::uint32_t>& grid, int dim);
-std::vector<ROW_TYPE> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, int dim);
-std::vector<std::uint32_t> from_bitpacked_rows(const std::vector<ROW_TYPE>& grid, int dim);
+std::vector<BITPACKED_T> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, int dim);
+std::vector<std::uint32_t> from_bitpacked_rows(const std::vector<BITPACKED_T>& grid, int dim);
+std::vector<BITPACKED_T> to_bitpacked_tiles(const std::vector<std::uint32_t>& grid, int dim);
+std::vector<std::uint32_t> from_bitpacked_tiles(const std::vector<BITPACKED_T>& grid, int dim);
 template<typename T>
 void init_gpu_mem(const std::vector<T>& grid, T** d_grid, T** d_new_grid);
 template <typename T>
@@ -30,19 +37,19 @@ void free_gpu_mem(T* d_grid, T* d_new_grid);
 std::string get_check_sums(const std::vector<std::uint32_t>& grid);
 void start_cuda_timer(cudaEvent_t& start);
 float stop_cuda_timer(cudaEvent_t& start);
+void print_grid(const std::vector<std::uint32_t>& grid, int dim);
 
 int main(int argc, char* argv[]) {
 
     if (argc < 5) {
-        std::cerr << "Usage: " << argv[0] << "<string id> <use bit packing> <grid size> <iterations>\n";
+        std::cerr << "Usage: " << argv[0] << "<string id> <bit packing mode> <grid size> <iterations>\n";
         return 1;
     }
 
-    bool use_bit_packing;
     std::string id;
-    int dim, iterations;
+    int dim, iterations, bit_packing_mode;
 
-    parse_args(argc, argv, id, use_bit_packing, dim, iterations);
+    parse_args(argc, argv, id, bit_packing_mode, dim, iterations);
     
     LOG << "Initializing grid" << std::endl;
 
@@ -58,10 +65,15 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < warm_up_iterations + hot_runs; ++i) {
         LOG << " -- Iteration " << i << std::endl;
 
-        if (use_bit_packing) {
-            perform_gol_row_packed(grid, out_grid, dim, iterations, id);
-        } else {
+        if (bit_packing_mode == NO_BIT_PACKING) {
             perform_gol(grid, out_grid, dim, iterations, id);
+        } else if (bit_packing_mode == ROW_PACKING) {
+            perform_gol_packed<ROW_PACKING>(grid, out_grid, dim, iterations, id);
+        } else if (bit_packing_mode == TILE_PACKING) {
+            perform_gol_packed<TILE_PACKING>(grid, out_grid, dim, iterations, id);
+        } else {
+            std::cerr << "Invalid bit packing mode" << std::endl;
+            return 1;
         }
     }
 }
@@ -88,14 +100,27 @@ void perform_gol(const std::vector<std::uint32_t>& grid, std::vector<std::uint32
     print_result(id, iterations, dim, milliseconds, out_grid);
 }
 
-void perform_gol_row_packed(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id) {
-    std::vector<ROW_TYPE> row_packed_grid = to_bitpacked_rows(grid, dim);
-    std::vector<ROW_TYPE> row_packed_out_grid(dim * dim / WORD_SIZE, 0);
+template <int BIT_PACKING_MODE>
+void perform_gol_packed(const std::vector<std::uint32_t>& grid, std::vector<std::uint32_t>& out_grid, int dim, int iterations, std::string id) {
+    std::vector<BITPACKED_T> packed_grid;
+    std::vector<BITPACKED_T> packed_out_grid(dim * dim / WORD_SIZE, 0);
 
-    ROW_TYPE* d_grid;
-    ROW_TYPE* d_new_grid;
+    auto tiles = to_bitpacked_tiles(grid, dim);
+    auto from = from_bitpacked_tiles(tiles, dim);
 
-    init_gpu_mem(row_packed_grid, &d_grid, &d_new_grid);
+    if (BIT_PACKING_MODE == ROW_PACKING) {
+        packed_grid = to_bitpacked_rows(grid, dim);
+    } else if (BIT_PACKING_MODE == TILE_PACKING) {
+        packed_grid = to_bitpacked_tiles(grid, dim);
+    } else {
+        std::cerr << "Invalid bit packing mode" << std::endl;
+        return;
+    }
+
+    BITPACKED_T* d_grid;
+    BITPACKED_T* d_new_grid;
+
+    init_gpu_mem(packed_grid, &d_grid, &d_new_grid);
 
     cudaEvent_t start;
     start_cuda_timer(start);
@@ -107,10 +132,14 @@ void perform_gol_row_packed(const std::vector<std::uint32_t>& grid, std::vector<
     
     float milliseconds = stop_cuda_timer(start);
     
-    cudaMemcpy(row_packed_out_grid.data(), d_grid, row_packed_out_grid.size() * sizeof(ROW_TYPE), cudaMemcpyDeviceToHost);
+    cudaMemcpy(packed_out_grid.data(), d_grid, packed_out_grid.size() * sizeof(BITPACKED_T), cudaMemcpyDeviceToHost);
     free_gpu_mem(d_grid, d_new_grid);
     
-    out_grid = from_bitpacked_rows(row_packed_out_grid, dim);
+    if (BIT_PACKING_MODE == ROW_PACKING) {
+        out_grid = from_bitpacked_rows(packed_out_grid, dim);
+    } else if (BIT_PACKING_MODE == TILE_PACKING) {
+        out_grid = from_bitpacked_tiles(packed_out_grid, dim);
+    }
 
     print_result(id, iterations, dim, milliseconds, out_grid);
 }
@@ -119,9 +148,9 @@ void print_result(std::string id, int iterations, int dim, float milliseconds, c
     RESULT << id << ";" << iterations << ";" << dim << ";" << milliseconds << ";" << get_check_sums(out_grid) << ";" << seed << std::endl;
 }
 
-void parse_args(int argc, char* argv[], std::string& id, bool& use_bit_packing, int& dim, int& iterations) {
+void parse_args(int argc, char* argv[], std::string& id, int& bit_packing_mode, int& dim, int& iterations) {
     id = argv[1];
-    use_bit_packing = std::stoi(argv[2]);
+    bit_packing_mode = std::stoi(argv[2]);
     dim = std::stoi(argv[3]);
     iterations = std::stoi(argv[4]);
 }
@@ -133,11 +162,11 @@ void init_grid(std::vector<std::uint32_t>& grid, int dim) {
     }
 }
 
-std::vector<ROW_TYPE> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, int dim) {
-    std::vector<ROW_TYPE> new_grid(dim * dim / WORD_SIZE, 0);
+std::vector<BITPACKED_T> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, int dim) {
+    std::vector<BITPACKED_T> new_grid(dim * dim / WORD_SIZE, 0);
  
     for (std::size_t i = 0; i < grid.size(); i += WORD_SIZE) {
-        ROW_TYPE row = 0;
+        BITPACKED_T row = 0;
 
         for (std::size_t j = 0; j < WORD_SIZE; ++j) {
             if (grid[i + j]) {
@@ -151,12 +180,71 @@ std::vector<ROW_TYPE> to_bitpacked_rows(const std::vector<std::uint32_t>& grid, 
     return new_grid;
 }
 
-std::vector<std::uint32_t> from_bitpacked_rows(const std::vector<ROW_TYPE>& grid, int dim) {
+#define X_bits 8
+#define Y_bits 8
+
+std::vector<BITPACKED_T> to_bitpacked_tiles(const std::vector<std::uint32_t>& grid, int dim) {
+    std::vector<BITPACKED_T> new_grid(dim * dim / WORD_SIZE, 0);
+    auto raw_data = grid.data();
+
+    for (int y = 0; y < dim; y += Y_bits) {
+        for (int x = 0; x < dim; x += X_bits) {
+
+            BITPACKED_T word = 0;
+            auto bit_setter = static_cast<BITPACKED_T>(1) << (sizeof(BITPACKED_T) * 8 - 1);
+            
+            for (int y_bit = 0; y_bit < Y_bits; ++y_bit) {
+                for (int x_bit = 0; x_bit < X_bits; ++x_bit) {
+
+                    BITPACKED_T value = raw_data[(y + y_bit) * dim + (x + x_bit)] ? 1 : 0;
+
+                    if (value) {
+                        word |= bit_setter;
+                    }
+                    
+                    bit_setter = bit_setter >> 1;
+                }
+            }
+
+            new_grid[(y / Y_bits) * (dim / X_bits) + x / X_bits] = word;
+        }
+    }
+
+    return new_grid;
+}
+
+std::vector<std::uint32_t> from_bitpacked_rows(const std::vector<BITPACKED_T>& grid, int dim) {
     std::vector<std::uint32_t> new_grid(dim * dim, 0);
 
     for (std::size_t word_idx = 0; word_idx < grid.size(); ++word_idx) {
         for (std::size_t bit = 0; bit < WORD_SIZE; ++bit) {
             new_grid[word_idx * WORD_SIZE + bit] = (grid[word_idx] >> bit) & 1;
+        }
+    }
+
+    return new_grid;
+}
+
+std::vector<std::uint32_t> from_bitpacked_tiles(const std::vector<BITPACKED_T>& grid, int dim) {
+    std::vector<std::uint32_t> new_grid(dim * dim, 0);
+    auto raw_data = new_grid.data();
+
+    for (int y = 0; y < dim; y += Y_bits) {
+        for (int x = 0; x < dim; x += X_bits) {
+
+            auto word = grid[(y / Y_bits) * (dim / X_bits) + x / X_bits];
+            auto mask = static_cast<BITPACKED_T>(1) << (sizeof(BITPACKED_T) * 8 - 1);
+
+            for (int y_bit = 0; y_bit < Y_bits; ++y_bit) {
+                for (int x_bit = 0; x_bit < X_bits; ++x_bit) {
+
+                    auto value = (word & mask) ? 1 : 0;
+
+                    raw_data[(y + y_bit) * dim + (x + x_bit)] = value;
+                    
+                    mask = mask >> 1;
+                }
+            }
         }
     }
 
@@ -215,4 +303,14 @@ float stop_cuda_timer(cudaEvent_t& start) {
     cudaEventDestroy(stop);
 
     return milliseconds;
+}
+
+void print_grid(const std::vector<std::uint32_t>& grid, int dim) {
+    for (int y = 0; y < dim; ++y) {
+        for (int x = 0; x < dim; ++x) {
+            std::cout << (grid[y * dim + x] ? '#' : '.');
+        }
+        std::cout << '\n';
+    }
+    std::cout << "-----------------" << std::endl;
 }

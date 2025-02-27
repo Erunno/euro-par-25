@@ -26,13 +26,13 @@ __global__ void gol_kernel(const WORD_TYPE* input, WORD_TYPE* output, int dim) {
     WORD_TYPE bl, bc, br;
 
     tl = load_word(input, x - 1, y - 1, x_dim, dim);
-    tc = load_word(input, x, y - 1, x_dim, dim);
+    tc = load_word(input, x,     y - 1, x_dim, dim);
     tr = load_word(input, x + 1, y - 1, x_dim, dim);
-    cl = load_word(input, x - 1, y, x_dim, dim);
-    cc = load_word(input, x, y, x_dim, dim);
-    cr = load_word(input, x + 1, y, x_dim, dim);
+    cl = load_word(input, x - 1, y,     x_dim, dim);
+    cc = load_word(input, x,     y,     x_dim, dim);
+    cr = load_word(input, x + 1, y,     x_dim, dim);
     bl = load_word(input, x - 1, y + 1, x_dim, dim);
-    bc = load_word(input, x, y + 1, x_dim, dim);
+    bc = load_word(input, x,     y + 1, x_dim, dim);
     br = load_word(input, x + 1, y + 1, x_dim, dim);
 
     WORD_TYPE result = 0;
@@ -94,9 +94,10 @@ __global__ void gol_kernel(const WORD_TYPE* input, WORD_TYPE* output, int dim) {
 
 void run_game_of_life(const std::uint64_t* input, std::uint64_t* output, int grid_dimensions) {
     int x_dim = grid_dimensions / (sizeof(uint64_t) * 8);
+    int y_dim = grid_dimensions;
 
-    dim3 blockSize(32, 32);
-    dim3 gridSize((x_dim + 31) / 32, (grid_dimensions + 31) / 32);
+    dim3 blockSize(16, 16);
+    dim3 gridSize((x_dim + blockSize.x - 1) / blockSize.x, (y_dim + blockSize.y - 1) / blockSize.y);
 
     gol_kernel<<<gridSize, blockSize>>>(input, output, grid_dimensions);
 }
