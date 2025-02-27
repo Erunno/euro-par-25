@@ -11,8 +11,8 @@
 timestamp=$(date +"%Y-%m-%d--%H-%M-%S")
 job_id=$SLURM_JOB_ID
 
-stdout_file="experiments-outputs/job-$timestamp--$job_id.out"
-stderr_file="experiments-outputs/job-$timestamp--$job_id.err"
+stdout_file="experiments-outputs/GoL-$timestamp--$job_id.out"
+stderr_file="experiments-outputs/GoL-$timestamp--$job_id.err"
 
 tested_implementation=$1
 impl_dir=$(dirname $tested_implementation)
@@ -21,10 +21,10 @@ exe=$impl_dir/bin/game_of_life
 shift
 program_params="$@"
 
-make GOL_IMPL=$tested_implementation
+make GOL_IMPL=$tested_implementation &> "$stderr_file"
 
 if [ $? -ne 0 ]; then
-    echo "Compilation failed"
+    echo "Compilation failed" >& "$stderr_file"
     exit 1
 fi
 
